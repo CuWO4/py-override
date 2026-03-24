@@ -1,0 +1,13 @@
+__pycache__
+.*/
+build/
+tmp/
+devlog/
+
+*.pyd
+
+*.txt
+*.tmp
+*.log
+*.prof
+*.so
