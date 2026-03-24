@@ -1,12 +1,17 @@
 from functools import wraps
 from types import FunctionType
-from typing import get_type_hints
+from typing import Any, TypeVar, Union, get_args, get_origin, get_type_hints
 import inspect
 import os
+import types
 
 __all__ = [
   'override'
 ]
+
+_UNION_ORIGINS = {Union}
+if hasattr(types, 'UnionType'):
+  _UNION_ORIGINS.add(types.UnionType)
 
 
 def _resolve_owner_class(func: FunctionType, first_arg=None) -> type:
@@ -46,6 +51,13 @@ def _find_parent_method(owning_class: type, func_name: str) -> FunctionType | No
 def _format_type(value) -> str:
   if value is None:
     return 'unknown'
+
+  if isinstance(value, TypeVar):
+    return value.__name__
+
+  origin = get_origin(value)
+  if origin in _UNION_ORIGINS:
+    return ' | '.join(_format_type(arg) for arg in get_args(value))
 
   if isinstance(value, type):
     return value.__qualname__.split('.')[-1]
@@ -142,10 +154,49 @@ def _is_type_compatible(child_t: type | None, parent_t: type | None) -> bool:
   if child_t is None or parent_t is None:
     return True
 
-  try:
-    return issubclass(child_t, parent_t)
-  except TypeError:
-    return child_t == parent_t
+  if child_t is parent_t or child_t == parent_t:
+    return True
+
+  if child_t is Any or parent_t is Any:
+    return True
+
+  if isinstance(child_t, TypeVar):
+    if child_t.__constraints__:
+      return all(_is_type_compatible(constraint, parent_t)
+                 for constraint in child_t.__constraints__)
+    if child_t.__bound__ is not None:
+      return _is_type_compatible(child_t.__bound__, parent_t)
+    return True
+
+  if isinstance(parent_t, TypeVar):
+    if parent_t.__constraints__:
+      return any(_is_type_compatible(child_t, constraint)
+                 for constraint in parent_t.__constraints__)
+    if parent_t.__bound__ is not None:
+      return _is_type_compatible(child_t, parent_t.__bound__)
+    return True
+
+  child_origin = get_origin(child_t)
+  parent_origin = get_origin(parent_t)
+
+  if child_origin in _UNION_ORIGINS:
+    return all(_is_type_compatible(option, parent_t)
+               for option in get_args(child_t))
+
+  if parent_origin in _UNION_ORIGINS:
+    return any(_is_type_compatible(child_t, option)
+               for option in get_args(parent_t))
+
+  child_type = child_origin or child_t
+  parent_type = parent_origin or parent_t
+
+  if isinstance(child_type, type) and isinstance(parent_type, type):
+    try:
+      return issubclass(child_type, parent_type)
+    except TypeError:
+      return child_type == parent_type
+
+  return child_t == parent_t
 
 
 def _is_default_compatible(child_param: inspect.Parameter,

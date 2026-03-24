@@ -1,5 +1,6 @@
 import unittest
 from unittest.mock import patch
+from typing import TypeVar
 
 import override as override_module
 from override import override
@@ -11,6 +12,13 @@ class Animal:
 
 class Dog(Animal):
   pass
+
+
+class Foo:
+  pass
+
+
+ExpandedAnimal = TypeVar('ExpandedAnimal', bound=Animal)
 
 
 class QualnameContainer:
@@ -204,6 +212,39 @@ class UntypedParamChild(UntypedParamParent):
     return value
 
 
+class ForwardRefParent:
+  def forward(self, value: 'Foo') -> 'Foo':
+    return value
+
+
+class ForwardRefChild(ForwardRefParent):
+  @override
+  def forward(self, value: 'Foo') -> 'Foo':
+    return value
+
+
+class UnionParent:
+  def merge(self, value: int | str) -> int | str:
+    return value
+
+
+class UnionChild(UnionParent):
+  @override
+  def merge(self, value: int | str | float) -> int | str:
+    return value
+
+
+class TypeVarParent:
+  def keep(self, value: ExpandedAnimal) -> ExpandedAnimal:
+    return value
+
+
+class TypeVarChild(TypeVarParent):
+  @override
+  def keep(self, value: ExpandedAnimal) -> ExpandedAnimal:
+    return value
+
+
 class ReturnParent:
   def make(self) -> Animal:
     return Animal()
@@ -313,6 +354,19 @@ class OverrideTests(unittest.TestCase):
   def test_untyped_hints_are_skipped(self):
     self.assertEqual(TypedParamChild().typed(10), 10)
     self.assertEqual(UntypedParamChild().untyped(11), 11)
+
+  def test_forward_references_are_supported(self):
+    item = Foo()
+    self.assertIs(ForwardRefChild().forward(item), item)
+
+  def test_union_annotations_are_supported(self):
+    self.assertEqual(UnionChild().merge(1), 1)
+    self.assertEqual(UnionChild().merge("x"), "x")
+    self.assertEqual(UnionChild().merge(1.5), 1.5)
+
+  def test_typevar_annotations_are_supported(self):
+    item = Animal()
+    self.assertIs(TypeVarChild().keep(item), item)
 
   def test_local_class_defined_inside_function_is_supported(self):
     def factory():
