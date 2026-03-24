@@ -52,7 +52,7 @@ class Derived(Base):
   def o(self, x): ...              # 报错: *args 存在性不一致
 
   @override
-  def v(self, *, x, extra, **kwargs): ... # OK: 父类有 **kwargs, 允许更多关键字参数
+  def v(self, *, **kwargs): ...    # OK: 父类有 **kwargs, 允许子类忽略仅关键字参数
 ```
 
 检查会在函数第一次运行时自动执行, 并且如果通过检查, 则后续运行不会再执行检查. 当校验失败时, 错误会同时带上原因和签名位置, 例如:
@@ -62,6 +62,8 @@ Return type error: Animal vs. Dog
 base signature filename.py:114 def make(self) -> Animal
 derived signature filename.py:514 def make(self) -> Dog
 ```
+
+这个装饰器也支持嵌套类以及定义在函数内部的局部类. 另外, 它也能处理一些常见的注解类型, 包括 `typing.Union` / `|` 联合类型、`TypeVar` 和前向引用.
 
 ## 检查规则
 
@@ -75,17 +77,16 @@ derived signature filename.py:514 def make(self) -> Dog
 - 子类形参与父类形参在以下任一情况下视为兼容:
 
 - 任一侧没有 type hint
-- 子类注解是父类注解的子类
+- 子类注解是父类注解的父类
 
 ### 参数形状
 
 - 仅位置参数: 个数必须一致, 并逐个检查.
 - 仅关键字参数: 个数必须一致, 且参数名必须完全一致.
 - 既可位置也可关键字的参数: 按位置参数处理.
-- `*args`: 子类和父类必须同时存在或同时不存在.
-- `**kwargs`: 子类和父类必须同时存在或同时不存在.
-- 如果父类存在 `*args`, 子类可以有更多位置参数.
-- 如果父类存在 `**kwargs`, 子类可以有更多关键字参数.
+- `*args`: 允许子类省略父类尾部的固定位置参数.
+- `**kwargs`: 允许子类省略父类的 keyword-only 参数.
+- 如果子类新增位置参数或 keyword-only 参数, 这些新增参数必须带默认值.
 
 ### 默认值
 
@@ -96,6 +97,12 @@ derived signature filename.py:514 def make(self) -> Dog
 
 - 如果任一返回值标注缺失, 则跳过检查.
 - 否则, 子类返回类型必须是父类返回类型的子类.
+
+## 说明
+
+- 这是运行时检查, 不是静态类型检查器, 所以只有在被重写的方法第一次调用时才会验证.
+- 注解解析使用 `typing.get_type_hints`, 因此注解应当来自可信代码.
+- 如果签名无法被正常解析, 错误信息会尽量带上相关方法的文件名和行号.
 
 ## 运行测试
 

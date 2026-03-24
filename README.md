@@ -52,7 +52,7 @@ class Derived(Base):
   def o(self, x): ...              # error: *args presence mismatch
 
   @override
-  def v(self, *, x, extra, **kwargs): ... # OK: parent has **kwargs, so extra keywords are allowed
+  def v(self, *, **kwargs): ...    # OK: parent has **kwargs, allow child omits Keyword-only parameter
 ```
 
 The check is performed automatically the first time the function runs, and if the check passes, it will not be performed again in subsequent runs. When a check fails, the message includes the reason plus the base and derived signatures with file and line numbers, for example:
@@ -62,6 +62,8 @@ Return type error: Animal vs. Dog
 base signature filename.py:114 def make(self) -> Animal
 derived signature filename.py:514 def make(self) -> Dog
 ```
+
+The decorator also works with nested classes and classes defined inside functions. In addition, it understands a few common typing features used in annotations, including `typing.Union` / `|` unions, `TypeVar`, and forward references.
 
 ## What it checks
 
@@ -73,17 +75,16 @@ derived signature filename.py:514 def make(self) -> Dog
 ### Parameter types
 
 - A child parameter is compatible with its parent parameter when either side has no type hint.
-- Otherwise, the child annotation must be a subclass of the parent annotation.
+- Otherwise, the child annotation must be a superclass of the parent annotation.
 
 ### Parameter shapes
 
 - Positional-only parameters: same count, checked one by one.
 - Keyword-only parameters: same count and same names.
 - Parameters that are both positional-or-keyword: treated like positional-only for validation.
-- `*args`: must exist on both sides or neither side.
-- `**kwargs`: must exist on both sides or neither side.
-- If the parent has `*args`, the child may have additional positional parameters.
-- If the parent has `**kwargs`, the child may have additional keyword parameters.
+- `*args`: allows the child to omit trailing fixed positional parameters from the parent.
+- `**kwargs`: allows the child to omit keyword-only parameters from the parent.
+- If the child adds extra positional or keyword-only parameters, those extra parameters must have defaults.
 
 ### Default values
 
@@ -94,6 +95,12 @@ derived signature filename.py:514 def make(self) -> Dog
 
 - If either return annotation is missing, validation is skipped.
 - Otherwise, the child return type must be a subclass of the parent return type.
+
+## Notes
+
+- This is a runtime check, not a static type checker, so validation happens only when the overridden method is called for the first time.
+- Annotation evaluation uses `typing.get_type_hints`, so annotations should come from trusted code.
+- If a signature cannot be resolved cleanly, the error message is designed to include the file name and line number of the relevant method.
 
 ## Run tests
 
