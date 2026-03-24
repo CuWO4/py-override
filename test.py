@@ -146,37 +146,48 @@ class ChildLacksKw(KwParent):
     return int(value)
 
 
-class StarParentAllowed:
-  def calc(self, value: int, *args) -> int:
-    return value + len(args)
+class StarParentReduced:
+  def calc(self, value: int, right: int, *args) -> int:
+    return value + right + len(args)
 
 
-class StarChildAllowed(StarParentAllowed):
+class StarChildReduced(StarParentReduced):
   @override
-  def calc(self, value: object, extra: object, *args) -> int:
-    return int(value) + int(extra) + sum(args, 0)
+  def calc(self, value: object) -> int:
+    return int(value) + 10
 
 
-class KwParentAllowed:
-  def calc(self, *, value: int, **kwargs) -> int:
-    return value
+class KwParentReduced:
+  def calc(self, *, value: int, right: int, **kwargs) -> int:
+    return value + right
 
 
-class KwChildAllowed(KwParentAllowed):
+class KwChildReduced(KwParentReduced):
   @override
-  def calc(self, *, value: object, extra: int, bonus: int, **kwargs) -> int:
-    return int(value) + extra + bonus
+  def calc(self, *, value: object) -> int:
+    return int(value) + 10
 
 
 class DefaultParentOk:
-  def calc(self, value: int = 1) -> int:
+  def calc(self, value: int) -> int:
     return value + 1
 
 
 class DefaultChildOk(DefaultParentOk):
   @override
-  def calc(self, value: object = 2) -> int:
-    return int(value) + 2
+  def calc(self, value: object, extra: int = 0) -> int:
+    return int(value) + extra + 2
+
+
+class KeywordDefaultParentOk:
+  def calc(self, *, value: int) -> int:
+    return value + 1
+
+
+class KeywordDefaultChildOk(KeywordDefaultParentOk):
+  @override
+  def calc(self, *, value: object, extra: int = 0) -> int:
+    return int(value) + extra + 2
 
 
 class DefaultParentBad:
@@ -313,7 +324,7 @@ class OverrideTests(unittest.TestCase):
   def test_keyword_only_name_mismatch_raises(self):
     with self.assertRaisesRegex(
       TypeError,
-      r"Keyword-only parameter names error: left, middle vs\. left, right\nbase signature test\.py:\d+ def calc\(self, \*, left: int, right: int\) -> int\nderived signature test\.py:\d+ def calc\(self, \*, left: object, middle: int\) -> int",
+      r"Keyword-only parameter count error: 2 vs\. 2\nbase signature test\.py:\d+ def calc\(self, \*, left: int, right: int\) -> int\nderived signature test\.py:\d+ def calc\(self, \*, left: object, middle: int\) -> int",
     ):
       KwNameChild().calc(left=1, middle=2)
 
@@ -324,12 +335,8 @@ class OverrideTests(unittest.TestCase):
     ):
       ChildAddsStar().calc(1)
 
-  def test_star_args_presence_mismatch_raises_when_parent_has_star_args(self):
-    with self.assertRaisesRegex(
-      TypeError,
-      r"\*args presence error: absent vs\. present\nbase signature test\.py:\d+ def calc\(self, value: int, \*args\) -> int\nderived signature test\.py:\d+ def calc\(self, value: object\) -> int",
-    ):
-      ChildLacksStar().calc(1)
+  def test_star_args_allow_reduced_positionals(self):
+    self.assertEqual(StarChildReduced().calc(1), 11)
 
   def test_double_star_kwargs_presence_mismatch_raises_when_child_adds_kwargs(self):
     with self.assertRaisesRegex(
@@ -338,18 +345,16 @@ class OverrideTests(unittest.TestCase):
     ):
       ChildAddsKw().calc(value=1, extra=2)
 
-  def test_double_star_kwargs_presence_mismatch_raises_when_parent_has_kwargs(self):
-    with self.assertRaisesRegex(
-      TypeError,
-      r"\*\*kwargs presence error: absent vs\. present\nbase signature test\.py:\d+ def calc\(self, \*, value: int, \*\*kwargs\) -> int\nderived signature test\.py:\d+ def calc\(self, \*, value: object\) -> int",
-    ):
-      ChildLacksKw().calc(value=1)
+  def test_double_star_kwargs_allow_reduced_keywords(self):
+    self.assertEqual(KwChildReduced().calc(value=1), 11)
 
-  def test_extra_positionals_allowed_when_parent_has_star_args(self):
-    self.assertEqual(StarChildAllowed().calc(1, 2, 3), 6)
+  def test_extra_default_positional_parameter_is_supported(self):
+    self.assertEqual(DefaultChildOk().calc(3, 4), 9)
+    self.assertEqual(DefaultChildOk().calc(3), 5)
 
-  def test_extra_keyword_only_allowed_when_parent_has_double_star_kwargs(self):
-    self.assertEqual(KwChildAllowed().calc(value=1, extra=2, bonus=3), 6)
+  def test_extra_default_keyword_only_parameter_is_supported(self):
+    self.assertEqual(KeywordDefaultChildOk().calc(value=3, extra=4), 9)
+    self.assertEqual(KeywordDefaultChildOk().calc(value=3), 5)
 
   def test_untyped_hints_are_skipped(self):
     self.assertEqual(TypedParamChild().typed(10), 10)
@@ -386,7 +391,6 @@ class OverrideTests(unittest.TestCase):
     self.assertEqual(obj.ping(3), 5)
 
   def test_default_parameters_with_matching_optional_semantics_are_supported(self):
-    self.assertEqual(DefaultChildOk().calc(), 4)
     self.assertEqual(DefaultChildOk().calc(3), 5)
 
   def test_parent_default_but_child_requires_argument_is_rejected(self):

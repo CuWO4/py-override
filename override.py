@@ -249,41 +249,33 @@ def _check_signature(child_func: FunctionType, parent_func: FunctionType):
   p_po, p_pk, p_kw, p_varpos, p_varkw = split_params(list_p)
 
   if bool(c_varpos) != bool(p_varpos):
-    raise _wrap_override_error(
-      f"*args presence error: "
-      f"{_format_presence(bool(c_varpos))} vs. {_format_presence(bool(p_varpos))}",
-      child_func,
-      parent_func,
-    )
+      if p_varpos and not c_varpos:
+        pass
+      else:
+        raise _wrap_override_error(
+          f"*args presence error: "
+          f"{_format_presence(bool(c_varpos))} vs. {_format_presence(bool(p_varpos))}",
+          child_func,
+          parent_func,
+        )
 
   if bool(c_varkw) != bool(p_varkw):
-    raise _wrap_override_error(
-      f"**kwargs presence error: "
-      f"{_format_presence(bool(c_varkw))} vs. {_format_presence(bool(p_varkw))}",
-      child_func,
-      parent_func,
-    )
+      if p_varkw and not c_varkw:
+        pass
+      else:
+        raise _wrap_override_error(
+          f"**kwargs presence error: "
+          f"{_format_presence(bool(c_varkw))} vs. {_format_presence(bool(p_varkw))}",
+          child_func,
+          parent_func,
+        )
 
   c_pos = c_po + c_pk
   p_pos = p_po + p_pk
 
-  if not p_varpos:
-    if len(c_pos) != len(p_pos):
-      raise _wrap_override_error(
-        f"Positional parameter count error: {len(c_pos)} vs. {len(p_pos)}",
-        child_func,
-        parent_func,
-      )
-  else:
-    if len(c_pos) < len(p_pos):
-      raise _wrap_override_error(
-        f"Positional parameter count error: "
-        f"{len(c_pos)} vs. at least {len(p_pos)}",
-        child_func,
-        parent_func,
-      )
+  shared_pos_count = min(len(c_pos), len(p_pos))
 
-  for i in range(len(p_pos)):
+  for i in range(shared_pos_count):
     pc = c_pos[i]
     pp = p_pos[i]
 
@@ -306,42 +298,31 @@ def _check_signature(child_func: FunctionType, parent_func: FunctionType):
         parent_func,
       )
 
+  if len(c_pos) > len(p_pos):
+    extra_child_pos = c_pos[len(p_pos):]
+
+    if not all(_has_default(param) for param in extra_child_pos):
+      raise _wrap_override_error(
+        f"Positional parameter count error: {len(c_pos)} vs. {len(p_pos)}",
+        child_func,
+        parent_func,
+      )
+
+  if len(c_pos) < len(p_pos) and not p_varpos:
+    raise _wrap_override_error(
+      f"Positional parameter count error: {len(c_pos)} vs. {len(p_pos)}",
+      child_func,
+      parent_func,
+    )
+
   p_kw_map = {p.name: p for p in p_kw}
   c_kw_map = {p.name: p for p in c_kw}
 
-  if not p_varkw:
-    if len(c_kw) != len(p_kw):
-      raise _wrap_override_error(
-        f"Keyword-only parameter count error: {len(c_kw)} vs. {len(p_kw)}",
-        child_func,
-        parent_func,
-      )
-    if c_kw_map.keys() != p_kw_map.keys():
-      raise _wrap_override_error(
-        f"Keyword-only parameter names error: "
-        f"{_format_param_names(c_kw)} vs. {_format_param_names(p_kw)}",
-        child_func,
-        parent_func,
-      )
-  else:
-    if len(c_kw) < len(p_kw):
-      raise _wrap_override_error(
-        f"Keyword-only parameter count error: "
-        f"{len(c_kw)} vs. at least {len(p_kw)}",
-        child_func,
-        parent_func,
-      )
+  shared_kw_names = p_kw_map.keys() & c_kw_map.keys()
 
-  for name, pp in p_kw_map.items():
-    if name not in c_kw_map:
-      raise _wrap_override_error(
-        f"Keyword-only parameter names error: "
-        f"{_format_param_names(c_kw)} vs. {_format_param_names(p_kw)}",
-        child_func,
-        parent_func,
-      )
-
+  for name in shared_kw_names:
     pc = c_kw_map[name]
+    pp = p_kw_map[name]
 
     tc = hints_c.get(name)
     tp = hints_p.get(name)
@@ -361,6 +342,22 @@ def _check_signature(child_func: FunctionType, parent_func: FunctionType):
         child_func,
         parent_func,
       )
+
+  extra_child_kw = [c_kw_map[name] for name in c_kw_map.keys() - p_kw_map.keys()]
+  if extra_child_kw and not all(_has_default(param) for param in extra_child_kw):
+    raise _wrap_override_error(
+      f"Keyword-only parameter count error: {len(c_kw)} vs. {len(p_kw)}",
+      child_func,
+      parent_func,
+    )
+
+  missing_parent_kw = [p_kw_map[name] for name in p_kw_map.keys() - c_kw_map.keys()]
+  if missing_parent_kw and not p_varkw:
+    raise _wrap_override_error(
+      f"Keyword-only parameter count error: {len(c_kw)} vs. {len(p_kw)}",
+      child_func,
+      parent_func,
+    )
 
   rc = hints_c.get('return')
   rp = hints_p.get('return')
