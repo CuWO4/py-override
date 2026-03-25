@@ -96,3 +96,69 @@ The decorator also works with nested classes and classes defined inside function
 ```bash
 python -m unittest test.py
 ```
+
+## Known Issue
+
+- method marked `@staticmethod` in local class cannot be handled properly.
+
+  ```python
+  from override import override
+
+  def outer():
+    class Base:
+      @staticmethod
+      def f(): ...
+
+    class Derived(Base):
+      @staticmethod
+      @override
+      def f(): ...
+
+    Derived().f() # crash
+
+  outer()
+  ```
+
+- wrapper not using `functools.wraps` properly would interfere with `@override`.
+
+  ```python
+  from override import override
+
+  def wrapper_with_no_wraps(func):
+    # ought to use @wraps(func)
+    def wrapper(*args, **kwargs):
+      return func(*args, **kwargs)
+    return wrapper
+
+  class Base:
+    def f(self): ...
+
+  class Derived(Base):
+    @override
+    @wrapper_with_no_wraps
+    def f(self): ...
+
+  Derived().f() # failed
+  ```
+
+  place `@override` at the closest position to the function to make it work.
+
+  ```python
+  from override import override
+
+  def wrapper_with_no_wraps(func):
+    # ought to use @wraps(func)
+    def wrapper(*args, **kwargs):
+      return func(*args, **kwargs)
+    return wrapper
+
+  class Base:
+    def f(self): ...
+
+  class Derived(Base):
+    @wrapper_with_no_wraps
+    @override # closest to the function
+    def f(self): ...
+
+  Derived().f() # OK
+  ```

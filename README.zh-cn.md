@@ -98,3 +98,69 @@ derived signature filename.py:514 def make(self) -> Dog
 ```bash
 python -m unittest test.py
 ```
+
+## 已知问题
+
+- 局部类中被标记为 `@staticmethod` 的方法无法被正确处理.
+
+  ```python
+  from override import override
+
+  def outer():
+    class Base:
+      @staticmethod
+      def f(): ...
+
+    class Derived(Base):
+      @staticmethod
+      @override
+      def f(): ...
+
+    Derived().f() # crash
+
+  outer()
+  ```
+
+- 未正确使用 `functools.wraps` 的自定义 wrapper 会干扰 `@override`
+
+  ```python
+  from override import override
+
+  def wrapper_with_no_wraps(func):
+    # ought to use @wraps(func)
+    def wrapper(*args, **kwargs):
+      return func(*args, **kwargs)
+    return wrapper
+
+  class Base:
+    def f(self): ...
+
+  class Derived(Base):
+    @override
+    @wrapper_with_no_wraps
+    def f(self): ...
+
+  Derived().f() # failed
+  ```
+
+  将 `@override` 写在离函数最近的地方来使其正常工作.
+
+  ```python
+  from override import override
+
+  def wrapper_with_no_wraps(func):
+    # ought to use @wraps(func)
+    def wrapper(*args, **kwargs):
+      return func(*args, **kwargs)
+    return wrapper
+
+  class Base:
+    def f(self): ...
+
+  class Derived(Base):
+    @wrapper_with_no_wraps
+    @override # closest to the function
+    def f(self): ...
+
+  Derived().f() # OK
+  ```
