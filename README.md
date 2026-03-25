@@ -10,49 +10,38 @@
 ```python
 from override import override
 
+from typing import TypeVar
 
 class X: ...
 class Y(X): ...
 class Z(Y): ...
 
+T = TypeVar('T')
 
 class Base:
-  def f(self) -> Y: ...
-  def g(self) -> Y: ...
-  def h(self) -> Y: ...
-
-  def i(self, x: Y): ...
-  def j(self, x: Y): ...
-  def k(self, x: Y): ...
-
-  def o(self, x, *args): ...
-  def v(self, *, x, **kwargs): ...
-
+  def f(self) -> T | 'Base': ...
+  def g(self) -> T | 'Derived': ...
+  def h(self, *, x, y: int): ...
+  def i(self, *, x, y, **kwargs): ...
+  def j(self, *, x, y, **kwargs): ...
+  def k(self, x, y, *args): ...
+  def l(self, x): ...
 
 class Derived(Base):
   @override
-  def f(self) -> Y: ...            # OK
-
+  def f(self) -> T | 'Derived': ...   # OK, T <= T, Derived <= Base
   @override
-  def g(self) -> Z: ...            # OK: covariant return type
-
+  def g(self) -> T | 'Base': ...      # Failed, Base is wider than Derived
   @override
-  def h(self) -> X: ...            # error: return type mismatch
-
+  def h(self, *, y: float, x): ...    # Failed, type of y not match
   @override
-  def i(self, x: Y): ...           # OK
-
+  def i(self, *, x, **kwargs): ...    # OK, **kwargs allow child omit parameter
   @override
-  def j(self, x: Z): ...           # error: parameter type is too narrow
-
+  def j(self, *, x, y): ...           # Failed, **kwargs presence not match
   @override
-  def k(self, x: X): ...           # OK: type hint missing on one side skips the check
-
+  def k(self, x, *args): ...          # OK, *args allow child omit position parameter at end
   @override
-  def o(self, x): ...              # error: *args presence mismatch
-
-  @override
-  def v(self, *, **kwargs): ...    # OK: parent has **kwargs, allow child omits Keyword-only parameter
+  def l(self, x, y = 0): ...          # OK, child can have extra parameter with default value
 ```
 
 The check is performed automatically the first time the function runs, and if the check passes, it will not be performed again in subsequent runs. When a check fails, the message includes the reason plus the base and derived signatures with file and line numbers, for example:

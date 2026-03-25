@@ -10,49 +10,38 @@
 ```python
 from override import override
 
+from typing import TypeVar
 
 class X: ...
 class Y(X): ...
 class Z(Y): ...
 
+T = TypeVar('T')
 
 class Base:
-  def f(self) -> Y: ...
-  def g(self) -> Y: ...
-  def h(self) -> Y: ...
-
-  def i(self, x: Y): ...
-  def j(self, x: Y): ...
-  def k(self, x: Y): ...
-
-  def o(self, x, *args): ...
-  def v(self, *, x, **kwargs): ...
-
+  def f(self) -> T | 'Base': ...
+  def g(self) -> T | 'Derived': ...
+  def h(self, *, x, y: int): ...
+  def i(self, *, x, y, **kwargs): ...
+  def j(self, *, x, y, **kwargs): ...
+  def k(self, x, y, *args): ...
+  def l(self, x): ...
 
 class Derived(Base):
   @override
-  def f(self) -> Y: ...            # OK
-
+  def f(self) -> T | 'Derived': ...   # OK, T <= T, Derived <= Base
   @override
-  def g(self) -> Z: ...            # OK: 返回类型协变
-
+  def g(self) -> T | 'Base': ...      # Failed, Base is wider than Derived
   @override
-  def h(self) -> X: ...            # 报错: 返回类型不匹配
-
+  def h(self, *, y: float, x): ...    # Failed, type of y not match
   @override
-  def i(self, x: Y): ...           # OK
-
+  def i(self, *, x, **kwargs): ...    # OK, **kwargs allow child omit parameter
   @override
-  def j(self, x: Z): ...           # 报错: 参数类型过窄
-
+  def j(self, *, x, y): ...           # Failed, **kwargs presence not match
   @override
-  def k(self, x: X): ...           # OK: 一侧没有 type hint 时跳过检查
-
+  def k(self, x, *args): ...          # OK, *args allow child omit position parameter at end
   @override
-  def o(self, x): ...              # 报错: *args 存在性不一致
-
-  @override
-  def v(self, *, **kwargs): ...    # OK: 父类有 **kwargs, 允许子类忽略仅关键字参数
+  def l(self, x, y = 0): ...          # OK, child can have extra parameter with default value
 ```
 
 检查会在函数第一次运行时自动执行, 并且如果通过检查, 则后续运行不会再执行检查. 当校验失败时, 错误会同时带上原因和签名位置, 例如:
