@@ -85,6 +85,10 @@ The decorator also works with nested classes and classes defined inside function
 - If either return annotation is missing, validation is skipped.
 - Otherwise, the child return type must be a subclass of the parent return type.
 
+### Multi Inheritance
+
+- In the case of multiple inheritance, `@override` ensures all parent classes have a method with the same name, and the child method conforms to the contract of all parent classes.
+
 ## Notes
 
 - This is a runtime check, not a static type checker, so validation happens only when the overridden method is called for the first time.
