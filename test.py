@@ -53,14 +53,75 @@ class MROFirstBase:
 
 
 class MROSecondBase:
-  def pick(self, value: int) -> str:
-    return str(value)
+  def pick(self, value: int) -> int:
+    return value + 2
 
 
 class MROChild(MROFirstBase, MROSecondBase):
   @override
   def pick(self, value: object) -> int:
     return int(value) + 2
+
+
+class MultiAncestor:
+  def call(self, value: int) -> int:
+    return value + 1
+
+
+class MultiBase1(MultiAncestor):
+  pass
+
+
+class MultiBase2(MultiAncestor):
+  @override
+  def call(self, value: int) -> int:
+    return value + 2
+
+
+class MultiDerived(MultiBase1, MultiBase2):
+  @override
+  def call(self, value: int) -> int:
+    return value + 3
+
+
+class MultiMismatchAncestor:
+  def ping(self, value: int) -> int:
+    return value + 1
+
+
+class MultiMismatchBase1(MultiMismatchAncestor):
+  pass
+
+
+class MultiMismatchBase2(MultiMismatchAncestor):
+  @override
+  def ping(self, value: str) -> int:
+    return len(value)
+
+
+class MultiMismatchDerived(MultiMismatchBase1, MultiMismatchBase2):
+  @override
+  def ping(self, value: int) -> int:
+    return value + 3
+
+
+class MultiMissingAncestor:
+  pass
+
+
+class MultiMissingBase1(MultiMissingAncestor):
+  pass
+
+
+class MultiMissingBase2(MultiMissingAncestor):
+  def boom(self) -> int:
+    return 1
+
+
+class MultiMissingDerived(MultiMissingBase1, MultiMissingBase2):
+  @override
+  def boom(self) -> int:
+    return 2
 
 
 class NoParentMethod:
@@ -296,14 +357,31 @@ class OverrideTests(unittest.TestCase):
     obj = ChildLookup()
     self.assertEqual(obj.hop(5), 25)
 
-  def test_first_mro_match_wins(self):
+  def test_duplicate_prototypes_across_paths_are_ok(self):
     obj = MROChild()
     self.assertEqual(obj.pick(7), 9)
+
+  def test_multi_inheritance_checks_each_path(self):
+    self.assertEqual(MultiDerived().call(7), 10)
+
+  def test_multi_inheritance_detects_mismatched_prototype_on_one_path(self):
+    with self.assertRaisesRegex(
+      TypeError,
+      r"Positional parameter type error \(value\): int vs\. str",
+    ):
+      MultiMismatchDerived().ping(7)
+
+  def test_multi_inheritance_reports_missing_prototype_path(self):
+    with self.assertRaisesRegex(
+      TypeError,
+      r"override target missing along path\(s\): MultiMissingBase1 -> MultiMissingAncestor",
+    ):
+      MultiMissingDerived().boom()
 
   def test_missing_parent_method_raises(self):
     with self.assertRaisesRegex(
       TypeError,
-      r"not override any methods\nsignature test\.py:\d+ def brand_new\(self\) -> int",
+      r"override target missing along path\(s\): NoParentMethod\nsignature test\.py:\d+ def brand_new\(self\) -> int",
     ):
       NoParentMethod().brand_new()
 

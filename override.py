@@ -48,6 +48,47 @@ def _find_parent_method(owning_class: type, func_name: str) -> FunctionType | No
   return None
 
 
+def _format_class_path(path: list[type]) -> str:
+  return ' -> '.join(cls.__qualname__ for cls in path)
+
+
+def _collect_parent_methods(owning_class: type, func_name: str) -> tuple[list[FunctionType], list[list[type]]]:
+  prototypes: list[FunctionType] = []
+  missing_paths: list[list[type]] = []
+  seen_prototypes: set[int] = set()
+
+  def dfs(current_class: type, path: list[type]):
+    if func_name in current_class.__dict__:
+      prototype = current_class.__dict__[func_name]
+      prototype_id = id(prototype)
+
+      if prototype_id not in seen_prototypes:
+        seen_prototypes.add(prototype_id)
+        prototypes.append(prototype)
+
+      return
+
+    next_bases = [base for base in current_class.__bases__]
+
+    if not next_bases:
+      missing_paths.append(path)
+      return
+
+    for base in next_bases:
+      dfs(base, path + [base])
+
+  direct_bases = [base for base in owning_class.__bases__]
+
+  if not direct_bases:
+    missing_paths.append([owning_class])
+    return prototypes, missing_paths
+
+  for base in direct_bases:
+    dfs(base, [base])
+
+  return prototypes, missing_paths
+
+
 def _format_type(value) -> str:
   if value is None:
     return 'unknown'
@@ -83,8 +124,14 @@ def _format_presence(value: bool) -> str:
 
 
 def _format_signature_line(func: FunctionType) -> str:
-  file_path = inspect.getsourcefile(func) or inspect.getfile(func)
-  _, start_line = inspect.getsourcelines(func)
+  try:
+    file_path = inspect.getsourcefile(func) or inspect.getfile(func)
+  except TypeError:
+    file_path = '<unknown>'
+  try:
+    _, start_line = inspect.getsourcelines(func)
+  except TypeError:
+    start_line = '<unknown>'
   file_name = os.path.basename(file_path)
   signature = inspect.signature(func)
   parameters = []
@@ -380,12 +427,19 @@ def override(func: FunctionType):
     if not checked:
       first_arg = args[0] if args else None
       cls = _resolve_owner_class(func, first_arg)
-      parent_func = _find_parent_method(cls, func.__name__)
 
-      if parent_func is None:
-        raise _wrap_override_error('not override any methods', func)
+      parent_funcs, missing_paths = _collect_parent_methods(cls, func.__name__)
 
-      _check_signature(func, parent_func)
+      if missing_paths:
+        raise _wrap_override_error(
+          f"override target missing along path(s): "
+          f"{'; '.join(_format_class_path(path) for path in missing_paths)}",
+          func,
+        )
+
+      for parent_func in parent_funcs:
+        _check_signature(func, parent_func)
+
       checked = True
 
     return func(*args, **kwargs)
